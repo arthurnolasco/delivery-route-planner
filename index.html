@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#170a6e">
+<meta name="description" content="Planejador de rotas de entrega para vários motoboys, com mapa, ajustes em tempo real e links para o Google Maps.">
+<title>Roteirizador de Entregas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Manrope:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap gutter">
+    <img class="crest" id="logo" alt="" hidden>
+    <svg class="crest" id="defaultLogo" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="32" r="30" fill="rgba(255,255,255,.12)" stroke="rgba(255,255,255,.55)" stroke-width="2"/>
+      <path d="M16 44 C 22 30, 30 40, 36 28 S 46 18, 48 20" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 6"/>
+      <rect x="11" y="39" width="10" height="10" rx="2" transform="rotate(45 16 44)" fill="#c9a24a"/>
+      <circle cx="48" cy="20" r="5" fill="#fff"/>
+    </svg>
+    <div class="hero-text">
+      <div class="eyebrow" id="eyebrow">Roteirização de entregas</div>
+      <h1 id="title">Roteirizador de Entregas</h1>
+      <p id="subtitle"></p>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" aria-label="Seções">
+  <div class="wrap gutter" role="tablist">
+    <button class="tab" role="tab" data-tab="routes">Rotas</button>
+    <button class="tab" role="tab" data-tab="skipped">Ignorados <span class="count" id="skippedCount">0</span></button>
+    <button class="tab" role="tab" data-tab="settings">Ajustes</button>
+  </div>
+</nav>
+
+<main id="app"><div class="wrap gutter"><div class="empty">Carregando…</div></div></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Optional config (Firebase, title, logo). Without it the app runs in demo mode. -->
+<script src="js/config.js" onerror="window.APP_CONFIG = window.APP_CONFIG || null"></script>
+<script src="data/sample.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/routing.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

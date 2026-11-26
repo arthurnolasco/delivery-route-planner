@@ -1,0 +1,14 @@
+# Local configuration (Firebase project, login e-mail)
+js/config.js
+
+# Real order exports must never be committed
+private/
+*.private.json
+*.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/

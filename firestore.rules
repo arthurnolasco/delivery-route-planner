@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Only the shared delivery account can read or change the plan.
+    // Replace the e-mail with the one set as loginEmail in js/config.js.
+    match /app/plan {
+      allow read, write: if request.auth != null
+        && request.auth.token.email == "deliveries@example.com";
+    }
+    // Everything else stays closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

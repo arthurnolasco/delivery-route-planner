@@ -22,7 +22,9 @@ const STORAGE_DEMO = "route-planner-demo", STORAGE_TAB = "route-planner-tab";
 
 let plan = null, planRef = null, loaded = false, signingIn = false, loginError = "";
 let session = DEMO ? "in" : "checking";
-const ui = { tab: readStorage(STORAGE_TAB) || "routes", filter: "all", removing: null, editing: {}, drafts: {}, adding: false };
+const TABS = ["routes", "skipped", "settings"];
+const tabFromHash = () => TABS.find(t => location.hash === "#" + t);
+const ui = { tab: tabFromHash() || readStorage(STORAGE_TAB) || "routes", filter: "all", removing: null, editing: {}, drafts: {}, adding: false };
 
 /* ---------- Helpers ---------- */
 function readStorage(k){ try { return localStorage.getItem(k); } catch { return null; } }
@@ -61,7 +63,7 @@ async function save(){
     if (DEMO) writeStorage(STORAGE_DEMO, JSON.stringify(plan));
     else await planRef.set(clone(plan));
   } catch (e) {
-    toast(e && e.code === "permission-denied" ? "Sem permissão para salvar. Saia e entre de novo." : "Não consegui salvar. Confira a internet e tente de novo.");
+    toast(e && e.code === "permission-denied" ? "Sem permissão para salvar. Saia e entre de novo." : "Erro ao salvar. Verifique a conexão e tente novamente.");
   }
   saving = false;
   if (saveQueued){ saveQueued = false; save(); }
@@ -156,7 +158,7 @@ function routesView(){
   if (plan.depot) h += `<div class="origin"><span class="pin"></span><span>Saída: <b>${esc(plan.depot.name)}</b>${plan.returnToDepot ? " · voltam ao final" : ""}</span></div>`;
   h += newOrderView();
   if (window.L) h += `<figure class="map-box"><div id="map" role="img" aria-label="Mapa das rotas"></div>
-    <figcaption class="cap">As linhas ligam as paradas na ordem de entrega. O caminho exato pelas ruas aparece ao abrir a rota no Google Maps.</figcaption></figure>`;
+    <figcaption class="cap">Linhas retas entre as paradas, na ordem de entrega.</figcaption></figure>`;
   h += `<div class="chips" role="group" aria-label="Mostrar rota">
     <button class="chip" data-filter="all" aria-pressed="${ui.filter === "all"}">Todos</button>
     ${R.map(r => `<button class="chip" data-filter="${r.courier.id}" aria-pressed="${ui.filter === r.courier.id}"><span class="dot" style="background:${r.color}"></span>${esc(r.courier.name)}</button>`).join("")}</div>`;
@@ -203,7 +205,7 @@ function newOrderView(){
   const d = ui.drafts, c = parseCoord(d.newCoord || "");
   return `<form class="card" id="newOrderForm">
     <b style="font-size:16px">Nova entrega</b>
-    <div class="hint">Para um pedido que não estava na lista. Ao adicionar, as rotas são recalculadas.</div>
+    <div class="hint">Pedido fora da lista original. As rotas são recalculadas ao adicionar.</div>
     <label class="hint" for="newName">Nome de quem recebe *</label>
     <input class="field" id="newName" value="${esc(d.newName || "")}" autocomplete="off">
     <div class="inline">
@@ -229,7 +231,7 @@ function newOrderView(){
 function skippedView(list){
   if (!list.length) return `<div class="empty">Nenhum pedido ignorado. Todos estão nas rotas.</div>`;
   const total = list.reduce((a, o) => a + (+o.qty || 0), 0);
-  let h = `<div class="skipped-total">${list.length} pedido${list.length > 1 ? "s" : ""} · ${qtyText(total)} fora das rotas. Coloque a coordenada e adicione à rota quando der.</div>`;
+  let h = `<div class="skipped-total">${list.length} pedido${list.length > 1 ? "s" : ""} · ${qtyText(total)} fora das rotas.</div>`;
   for (const o of list){
     const located = hasCoord(o), editing = !!ui.editing[o.id], draft = ui.drafts["coord" + o.id] || "", parsed = parseCoord(draft);
     h += `<article class="card">
@@ -257,11 +259,11 @@ function skippedView(list){
   return h;
 }
 function coordHint(text){
-  if (!text) return "Dica: no Google Maps, segure o dedo sobre o local e copie os números que aparecem.";
+  if (!text) return "No Google Maps, toque e segure no local para ver a coordenada.";
   const c = parseCoord(text);
-  if (!c) return "Não reconheci a coordenada. Use o formato -20.671234, -40.501234.";
+  if (!c) return "Coordenada inválida. Use o formato -20.671234, -40.501234.";
   const dist = plan && plan.depot ? ` · a ${fmt(distanceKm(plan.depot, c) / PARAMS.ROAD_FACTOR)} km da saída` : "";
-  return `Entendi: ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}${dist}`;
+  return `Coordenada: ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}${dist}`;
 }
 
 function settingsView(){
@@ -275,7 +277,7 @@ function settingsView(){
   h += `<form class="inline" id="courierForm" style="margin-top:6px">
       <input class="field" id="newCourier" placeholder="Nome do novo motoboy" value="${esc(d.newCourier || "")}" autocomplete="off">
       <button class="btn btn-primary" type="submit">Adicionar motoboy</button></form>
-    <div class="hint">Adicionar ou remover recalcula as rotas. Trocar o nome não muda nada.</div></div>`;
+    <div class="hint">Adicionar ou remover um motoboy recalcula as rotas.</div></div>`;
 
   const depot = plan.depot, draft = d.depotCoord ?? "", parsed = parseCoord(draft);
   h += `<div class="section-title">Ponto de saída</div><div class="card">
@@ -286,18 +288,17 @@ function settingsView(){
       <input class="field" id="depotName" value="${esc(d.depotName ?? "")}" placeholder="Ex.: Sede" autocomplete="off">
       <label class="hint" for="depotCoord">Coordenada ou link do Google Maps</label>
       <input class="field" id="depotCoord" value="${esc(draft)}" placeholder="-20.641500, -40.514800" autocomplete="off">
-      <div class="hint ${parsed ? "ok" : draft ? "err" : ""}" id="depotHint">${draft ? (parsed ? `Entendi: ${parsed.lat.toFixed(6)}, ${parsed.lng.toFixed(6)}` : "Não reconheci a coordenada.") : "Cole a coordenada do novo ponto."}</div>
+      <div class="hint ${parsed ? "ok" : draft ? "err" : ""}" id="depotHint">${draft ? (parsed ? `Coordenada: ${parsed.lat.toFixed(6)}, ${parsed.lng.toFixed(6)}` : "Coordenada inválida.") : "Cole a coordenada do novo ponto."}</div>
       <button class="btn btn-primary" type="submit" id="depotSubmit" ${parsed ? "" : "disabled"}>Mudar saída e recalcular</button>
     </form>
     <label class="switch"><input type="checkbox" id="returnToDepot" ${plan.returnToDepot ? "checked" : ""}> Motoboys voltam ao ponto de saída no final</label>
   </div>`;
   if (!DEMO) h += `<div class="section-title">Este aparelho</div><div class="card">
-    <div class="hint" style="font-size:13px">Ao sair, a senha será pedida de novo neste aparelho.</div>
+    <div class="hint" style="font-size:13px">A senha será pedida no próximo acesso.</div>
     <button class="btn btn-ghost logout" data-logout>Sair deste aparelho</button></div>`;
   h += `<div class="section-title">Como as rotas são calculadas</div><div class="card"><div class="hint" style="font-size:13px">
-    O sistema divide as entregas para que o último motoboy termine o mais cedo possível e depois escolhe a melhor ordem de cada rota.
-    As distâncias são estimadas pela linha reta com uma margem para as ruas, usando ${PARAMS.MIN_PER_STOP} min por parada e ${PARAMS.SPEED_KMH} km/h de média.
-    O caminho exato pelas ruas é o Google Maps que faz ao abrir a rota.</div></div>`;
+    As entregas são divididas para que o último motoboy termine o mais cedo possível.
+    Distâncias estimadas em linha reta com margem para as ruas (${PARAMS.MIN_PER_STOP} min por parada, ${PARAMS.SPEED_KMH} km/h). O trajeto exato fica com o Google Maps.</div></div>`;
   return h;
 }
 
@@ -314,7 +315,7 @@ function loginView(){
 function importView(){
   return `<div class="card login">
     <h2>Nenhum pedido cadastrado</h2>
-    <p>Escolha um arquivo .json com os pedidos (o formato está no README). Isso só precisa ser feito uma vez: depois todos os aparelhos veem os mesmos dados.</p>
+    <p>Escolha um arquivo .json com os pedidos (o formato está no README). A importação é feita uma única vez.</p>
     <label class="btn btn-primary" for="importFile">Escolher arquivo de pedidos</label>
     <input id="importFile" type="file" accept=".json,application/json" hidden>
     ${window.SAMPLE_DATA ? `<button class="btn btn-ghost" data-use-sample>Usar dados de exemplo</button>` : ""}
@@ -389,7 +390,13 @@ function toast(message){ const el = document.getElementById("toast"); el.textCon
 document.querySelector(".tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (!t) return;
   ui.tab = t.dataset.tab; writeStorage(STORAGE_TAB, ui.tab);
+  history.replaceState(null, "", "#" + ui.tab);
   render(); window.scrollTo({top: 0});
+});
+// Links like .../#skipped open straight on that tab.
+window.addEventListener("hashchange", () => {
+  const tab = tabFromHash();
+  if (tab && tab !== ui.tab){ ui.tab = tab; render(); }
 });
 
 app.addEventListener("click", async e => {
@@ -415,7 +422,7 @@ app.addEventListener("click", async e => {
   if ("useSample" in d){ importPlan(clone(window.SAMPLE_DATA)); return; }
   if (d.copy){
     const text = whatsappText(d.copy);
-    try { await navigator.clipboard.writeText(text); toast("Texto copiado. É só colar no WhatsApp."); }
+    try { await navigator.clipboard.writeText(text); toast("Texto copiado."); }
     catch { showCopyFallback(text); }
   }
 });
@@ -432,7 +439,7 @@ app.addEventListener("input", e => {
   if (id === "newCourier" || id === "depotName") ui.drafts[id] = el.value;
   if (id === "depotCoord"){
     ui.drafts.depotCoord = el.value; const c = parseCoord(el.value), hint = document.getElementById("depotHint");
-    hint.textContent = el.value ? (c ? `Entendi: ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}` : "Não reconheci a coordenada.") : "Cole a coordenada do novo ponto.";
+    hint.textContent = el.value ? (c ? `Coordenada: ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}` : "Coordenada inválida.") : "Cole a coordenada do novo ponto.";
     hint.className = "hint " + (c ? "ok" : el.value ? "err" : ""); document.getElementById("depotSubmit").disabled = !c;
   }
   if (/^new(Name|Qty|Phone|Address|Coord|Notes)$/.test(id)){
@@ -451,7 +458,7 @@ app.addEventListener("change", async e => {
   if (el.id === "returnToDepot") update(p => { p.returnToDepot = el.checked; }, el.checked ? "Rotas recalculadas com volta à saída." : "Rotas recalculadas sem volta.");
   if (el.id === "importFile" && el.files[0]){
     try { importPlan(JSON.parse(await el.files[0].text())); }
-    catch { toast("Não consegui ler esse arquivo. Confira o formato no README."); }
+    catch { toast("Arquivo inválido. Confira o formato no README."); }
   }
 });
 app.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.dataset.rename) e.target.blur(); });
@@ -471,9 +478,9 @@ app.addEventListener("submit", async e => {
     catch (err) {
       const code = err.code || "";
       loginError = /wrong-password|invalid-credential|invalid-login|user-not-found/.test(code) ? "Senha incorreta. Confira com quem organiza as entregas."
-        : code === "auth/too-many-requests" ? "Muitas tentativas. Espere alguns minutos e tente de novo."
-        : code === "auth/network-request-failed" ? "Sem internet. Confira a conexão e tente de novo."
-        : "Não consegui entrar. Tente de novo.";
+        : code === "auth/too-many-requests" ? "Muitas tentativas. Aguarde alguns minutos."
+        : code === "auth/network-request-failed" ? "Sem conexão. Tente novamente."
+        : "Erro ao entrar. Tente novamente.";
     }
     signingIn = false; render();
   }
@@ -493,7 +500,7 @@ function importPlan(data){
   if (!routesAreValid(data)) data.routes = computeRoutes(data);
   data.updatedAt = new Date().toISOString();
   if (DEMO){ receive(data); save(); }
-  else planRef.set(clone(data)).then(() => toast("Pedidos importados."), () => toast("Não consegui salvar os pedidos."));
+  else planRef.set(clone(data)).then(() => toast("Pedidos importados."), () => toast("Erro ao salvar os pedidos."));
 }
 function loadSample(){
   if (window.SAMPLE_DATA){ receive(window.SAMPLE_DATA); save(); }
@@ -507,7 +514,7 @@ function startDemo(){
 }
 
 function startFirebase(){
-  if (!window.firebase){ app.innerHTML = `<div class="wrap gutter"><div class="empty">Não consegui carregar o Firebase. Confira a internet e recarregue.</div></div>`; return; }
+  if (!window.firebase){ app.innerHTML = `<div class="wrap gutter"><div class="empty">Erro ao carregar o Firebase. Verifique a conexão e recarregue a página.</div></div>`; return; }
   firebase.initializeApp(CONFIG.firebase);
   planRef = firebase.firestore().doc(CONFIG.document || "app/plan");
   let unsubscribe = null, loadTimer = null;
@@ -516,7 +523,7 @@ function startFirebase(){
     clearTimeout(loadTimer); plan = null; loaded = false;
     if (!user){ session = "out"; render(); return; }
     session = "in"; render();
-    loadTimer = setTimeout(() => { if (!loaded) app.innerHTML = `<div class="wrap gutter"><div class="empty">Não consegui carregar os pedidos ainda. Confira a internet; a página tenta de novo sozinha.</div></div>`; }, 10000);
+    loadTimer = setTimeout(() => { if (!loaded) app.innerHTML = `<div class="wrap gutter"><div class="empty">Os pedidos ainda não carregaram. Verifique a conexão; a página tenta novamente sozinha.</div></div>`; }, 10000);
     unsubscribe = planRef.onSnapshot(snap => {
       if (snap.metadata.hasPendingWrites) return;   // our own write echoing back
       clearTimeout(loadTimer); loaded = true;
@@ -525,7 +532,7 @@ function startFirebase(){
       receive(snap.data());
     }, err => {
       clearTimeout(loadTimer); loaded = true;
-      app.innerHTML = `<div class="wrap gutter"><div class="empty">${err.code === "permission-denied" ? "Este login não tem acesso aos pedidos." : "Não consegui carregar os pedidos. Recarregue a página."}</div></div>`;
+      app.innerHTML = `<div class="wrap gutter"><div class="empty">${err.code === "permission-denied" ? "Este login não tem acesso aos pedidos." : "Erro ao carregar os pedidos. Recarregue a página."}</div></div>`;
     });
   });
 }

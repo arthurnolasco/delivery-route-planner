@@ -1,117 +1,102 @@
 # Delivery Route Planner
 
-A mobile-first web app that splits a list of home deliveries among several couriers and orders each route, so the **last courier finishes as early as possible**. Routes are re-optimised live whenever someone removes an order, adds a new one, changes the number of couriers or moves the starting point, and every phone sees the same plan.
+Web app that splits home deliveries among several couriers and orders each route so the last delivery happens as early as possible. I built it for a charity pie sale in Guarapari, Brazil: 33 orders, 3 motorcycle couriers and one morning to deliver everything.
 
-Built for a real charity drive in Guarapari, Brazil, where a youth group sold homemade pies (*empadões*) and delivered 33 orders with 3 motorcycle couriers. The interface is in Brazilian Portuguese because that is who used it; the code and docs are in English.
+**Demo:** https://arthurnolasco.github.io/delivery-route-planner/ (fictional data, no login)
 
-> **Live demo:** runs with fictional data and needs no login. Add your deployed URL here.
+<p>
+  <img src="docs/routes.jpg" alt="Routes screen with map" width="260">
+  <img src="docs/route-card.jpg" alt="One courier's route" width="260">
+  <img src="docs/new-order.jpg" alt="Adding a new order" width="260">
+</p>
 
-## Why
+The interface is in Portuguese because the people using it are Brazilian. Code and docs are in English.
 
-The orders arrived as a spreadsheet of addresses and coordinates. Splitting them by hand ("you take the beach, I take downtown") leaves one courier riding twice as long as the others, and plans change on the day: a customer decides to pick up, an address turns out to be wrong, a new order comes in. The app turns that list into balanced routes in under a second and keeps them balanced as things change.
+## The problem
 
-## Features
+The orders came as a spreadsheet with addresses and coordinates. Splitting them by neighbourhood left one courier with twice the work of the others, and the plan kept changing: a customer decided to pick up, an address was wrong, a late order came in. I wanted something the team could open on their phones, adjust on the spot and still get balanced routes.
 
-- **Balanced multi-courier routing**: minimises the time until the last delivery (makespan), then total time.
-- **Live adjustments**: remove an order from a route, re-add skipped orders, add orders that were not on the original list, add/rename/remove couriers, change the depot, toggle "return to depot". Each change re-optimises all routes.
-- **Stable assignments**: after a re-optimisation, each courier keeps the new route most similar to their old one, so a small change does not reshuffle everybody.
-- **Map** (Leaflet + OpenStreetMap) with numbered stops, one colour per courier and a filter per courier.
-- **Hand-off to the field**: one button opens the full route in Google Maps (split into parts when it exceeds Google's waypoint limit), another copies a WhatsApp-ready text with names, phones, notes and links.
-- **Flexible coordinate input**: decimal pairs, comma decimals, `20.67° S, 40.49° W`, or a pasted Google Maps link.
-- **Shared, password-protected plan** through Firebase (Auth + Firestore), with real-time sync across devices.
-- **Demo mode** with fictional data and localStorage, so the project can be tried without any backend.
-- **Light and dark themes**, safe-area aware layout, works one-handed on a phone.
+## What it does
+
+- Splits the orders among the couriers and orders each route.
+- Recalculates everything when an order is removed, a skipped order is put back, a new order is added, a courier is added or removed, or the starting point changes.
+- After a recalculation each courier keeps the route closest to the one they had, so a small change doesn't reshuffle the whole team.
+- Shows the routes on a map (Leaflet + OpenStreetMap), with one colour per courier.
+- Opens the full route in Google Maps and copies a text with names, phones and links to send on WhatsApp.
+- Accepts coordinates in several formats, including a pasted Google Maps link.
+- Keeps one shared plan for everyone through Firebase (Auth + Firestore), protected by a password.
+- Runs in demo mode with fictional data when there is no Firebase config.
 
 ## How the routing works
 
-This is a small instance of the **Vehicle Routing Problem** (multiple Travelling Salesman). Exact solvers are overkill for ~30 stops in a browser, so [`js/routing.js`](js/routing.js) uses a multi-start local search:
+It's a small Vehicle Routing Problem. For about 30 stops in a browser an exact solver isn't worth it, so `js/routing.js` uses a heuristic:
 
-1. **Objective.** For each route: `travel time + stops × 4 min`, with travel time from distance at 25 km/h. The score is `max(route times) × 1000 + sum(route times)`: first make the slowest courier faster, then break ties by total effort.
-2. **Distances.** Haversine distance × 1.35 as a cheap stand-in for road distance (no routing API needed).
-3. **Construction.** Stops are inserted one by one, in random order, at the position (in any route) that increases the score the least.
-4. **Improvement.** Repeat until nothing improves:
-   - **2-opt** inside a route (reverse a segment),
-   - **relocate** a stop to another position or route,
-   - **swap** two stops between routes.
-5. **Multi-start.** Steps 3–4 run 140 times from different random orders; the best plan wins. The random generator is **seeded**, so the same input always gives the same routes on every device.
-6. **Grouping.** Orders at the same address become a single stop.
+1. Each route's time is `distance / 25 km/h + 4 min per stop`. The score to minimise is `max(route times) * 1000 + sum(route times)`, so the slowest courier comes first and total time breaks ties.
+2. Distance is the haversine distance times 1.35, a rough correction for streets. No routing API needed.
+3. Stops are inserted one at a time, in random order, where they increase the score the least.
+4. Then a local search runs until nothing improves: 2-opt inside a route, moving a stop to another position or route, and swapping stops between routes.
+5. Steps 3 and 4 repeat 140 times from different random orders and the best result is kept. The random generator has a fixed seed, so every phone computes the same routes.
 
-For the real event (28 routable orders, 3 couriers) this runs in roughly 0.3 s on a laptop.
+Orders at the same address count as one stop. For the real event (28 orders with coordinates, 3 couriers) it takes about 0.3 s on a laptop.
 
-**Known limitations**
+Limitations I know about: straight-line distance ignores one-way streets and the bay; there are no capacity limits or delivery time windows; and recalculating can move stops of a courier who is already on the road. A road distance matrix (OSRM, for example) and a "lock routes" option would be the next steps.
 
-- Straight-line distance × factor ignores one-way streets, rivers and hills. A distance matrix from a routing engine (e.g. OSRM) would make the estimates closer to reality.
-- No vehicle capacity or delivery time windows.
-- Re-optimising may move stops between couriers who are already on the road. A "lock routes" mode that only inserts new orders would fit that moment better.
+## Running it
 
-## Project structure
-
-```
-index.html              markup and script loading (no build step)
-css/style.css           design tokens, light/dark themes, mobile layout
-js/routing.js           optimisation and geo helpers (browser + Node, no dependencies)
-js/app.js               UI rendering, actions, map, Firebase / demo persistence
-js/config.example.js    template for js/config.js (git-ignored)
-data/sample.js          fictional sample plan used by demo mode
-firestore.rules         security rules: only the shared account can read/write
-tests/routing.test.js   unit tests for js/routing.js
-tests/index.html        runs the same tests in a browser
-```
-
-## Running locally
-
-It is a static site. Serve the folder with any static server and open it:
+It's a static site with no build step:
 
 ```bash
-npx serve .            # or: python -m http.server 8000
+npx serve .        # or: python -m http.server 8000
 ```
 
-Without `js/config.js` the app starts in **demo mode** with the fictional data in `data/sample.js`. You can also force demo mode with `?demo` in the URL.
+Without `js/config.js` it opens in demo mode. Adding `?demo` to the URL forces it.
 
-### Tests
+Tests (no dependencies):
 
 ```bash
 node tests/routing.test.js
 ```
 
-or open `tests/index.html` through the static server. The tests cover coordinate parsing, distance, stop grouping, that every stop is routed exactly once, determinism, cluster separation, stable courier assignment, route metrics and Google Maps link splitting.
+They can also run in the browser at `tests/index.html`.
 
-## Using it with Firebase (shared plan)
+## Using your own Firebase
 
-1. Create a Firebase project (the free Spark plan is enough) and register a **Web app**.
-2. **Authentication** → enable **Email/Password**, add **one** user (the e-mail never needs to exist; people only type its password), and disable new sign-ups under *Settings → User actions*.
-3. **Firestore** → create the database in production mode and publish [`firestore.rules`](firestore.rules) with your user's e-mail.
-4. Copy `js/config.example.js` to `js/config.js` and fill in the web config, `loginEmail` and the header texts.
-5. Deploy the folder to any static host (Netlify, Cloudflare Pages, GitHub Pages…), open it, sign in and import your orders (or use the sample).
+1. Create a Firebase project (the free plan is enough) and register a web app.
+2. In Authentication, enable Email/Password, create a single user and turn off new sign-ups. People only type that user's password.
+3. Create a Firestore database and publish `firestore.rules` with that user's e-mail.
+4. Copy `js/config.example.js` to `js/config.js` and fill it in.
+5. Deploy the folder to any static host, sign in and import a JSON file with the orders.
 
-The Firebase web config is public by design; access is enforced by the Firestore rules.
+The Firebase web config is public anyway; the Firestore rules are what protect the data.
 
 ## Data format
 
-The plan is a single JSON document (also the format for importing a file):
-
 ```jsonc
 {
-  "item": { "singular": "empadão", "plural": "empadões" },   // what is being delivered
+  "item": { "singular": "empadão", "plural": "empadões" },
   "depot": { "name": "Sede", "lat": -20.6415, "lng": -40.5148 },
   "returnToDepot": false,
-  "couriers": [ { "id": "c1", "name": "Motoboy 1" } ],
-  "orders": [
-    {
-      "id": 1, "name": "Ana Souza", "phone": "(27) 90000-0101", "qty": 2,
-      "address": "Rua das Acácias, 120, Centro", "lat": -20.6705, "lng": -40.499,
-      "notes": "", "status": "routed",   // "routed" or "skipped"
-      "reason": ""                       // why it was skipped
-    }
-  ],
-  "routes": { "c1": [1] }               // optional; computed when missing or stale
+  "couriers": [{ "id": "c1", "name": "Motoboy 1" }],
+  "orders": [{
+    "id": 1, "name": "Ana Souza", "phone": "(27) 90000-0101", "qty": 2,
+    "address": "Rua das Acácias, 120, Centro", "lat": -20.6705, "lng": -40.499,
+    "notes": "", "status": "routed", "reason": ""   // status: "routed" or "skipped"
+  }],
+  "routes": { "c1": [1] }                           // optional, recalculated when missing
 }
 ```
 
-## Tech
+## Files
 
-Vanilla JavaScript, HTML and CSS (no framework, no build), [Leaflet](https://leafletjs.com/) with [OpenStreetMap](https://www.openstreetmap.org/copyright) tiles, Firebase Authentication and Cloud Firestore.
+```
+index.html             page structure
+css/style.css          styles, light and dark theme
+js/routing.js          route optimisation (works in the browser and in Node)
+js/app.js              screens, actions, map, Firebase and demo storage
+js/config.example.js   template for js/config.js (git-ignored)
+data/sample.js         fictional orders for the demo
+firestore.rules        Firestore access rules
+tests/                 tests for routing.js
+```
 
-## Privacy
-
-The repository ships only fictional data. Real orders live in Firestore behind authentication and are never committed; keep any real export out of the repo.
+All data in this repository is made up. The real orders stayed in Firestore and were never committed.
